@@ -245,25 +245,10 @@
 		bias-pull-up;
 	};
 
-	rsci4_pins: rsci4 {
-		pinmux = <RZG3E_PORT_PINMUX(7, 6, 5)>, /* RXD4 */
-			 <RZG3E_PORT_PINMUX(7, 7, 5)>, /* TXD4 */
-			 <RZG3E_PORT_PINMUX(8, 0, 6)>, /* CTS4N */
-			 <RZG3E_PORT_PINMUX(8, 1, 5)>; /* RTS4N */
-		bias-pull-up;
-	};
-
 	rsci9_pins: rsci9 {
 		pinmux = <RZG3E_PORT_PINMUX(8, 2, 5)>, /* RXD9 */
 			 <RZG3E_PORT_PINMUX(8, 3, 5)>; /* TXD9 */
 		bias-pull-up;
-	};
-
-	rspi0_pins: rspi0 {
-		pinmux = <RZG3E_PORT_PINMUX(M, 4, 2)>, /* MISOA */
-			 <RZG3E_PORT_PINMUX(M, 5, 2)>, /* MOSIA */
-			 <RZG3E_PORT_PINMUX(M, 6, 2)>, /* RSPCKA */
-			 <RZG3E_PORT_PINMUX(M, 7, 2)>; /* SSLA0 */
 	};
 
 	scif_pins: scif {
@@ -313,17 +298,6 @@
 };
 #endif
 
-#if !SW_LCD_EN
-&rsci4 {
-	pinctrl-0 = <&rsci4_pins>;
-	pinctrl-names = "default";
-
-	uart-has-rtscts;
-
-	status = "okay";
-};
-#endif
-
 #if (!SW_LCD_EN)
 &rsci9 {
 	pinctrl-0 = <&rsci9_pins>;
@@ -332,15 +306,6 @@
 	status = "okay";
 };
 #endif
-
-&rspi0 {
-	pinctrl-0 = <&rspi0_pins>;
-	pinctrl-names = "default";
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	status = "okay";
-};
 
 &scif0 {
 	pinctrl-0 = <&scif_pins>;

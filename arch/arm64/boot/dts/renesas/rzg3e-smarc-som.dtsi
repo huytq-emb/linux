@@ -13,10 +13,6 @@
  *      0 - SD0 is connected to eMMC (default)
  *      1 - SD0 is connected to uSD0 card
  *
- * Switch position SYS.4, Macro SW_SER2_EN:
- *      0 - Select Module DSI connector(GPIO)
- *      1 - Select SER2
- *
  * Switch position SYS.5, Macro SW_LCD_EN:
  *      0 - Select Misc. Signals routing
  *      1 - Select LCD
@@ -24,6 +20,10 @@
  * Switch position BOOT.6, Macro SW_PDM_EN:
  *      0 - Select CAN routing
  *      1 - Select PDM
+ *
+ * SW_HDMI_EN when RZG3E_SMARC_MIPI_DSI_ENABLE is set:
+ *     0 - MIPI DSI is connected to Carrier HDMI (default)
+ *     1 - MIPI DSI is connected to Module DSI connector
  */
 
 / {
@@ -34,6 +34,7 @@
 		ethernet1 = &eth1;
 		i2c1 = &i2c1;
 		i2c2 = &i2c2;
+                i2c7 = &i2c7;
 		mmc0 = &sdhi0;
 		mmc2 = &sdhi2;
 	};
@@ -44,11 +45,49 @@
 		reg = <0x0 0x48000000 0x0 0xf8000000>;
 	};
 
-	pcie_refclk: pcie-ref-clock {
+        reserved-memory {
+                #address-cells = <2>;
+                #size-cells = <2>;
+                ranges;
+
+                global_cma: linux,cma@58000000 {
+                        compatible = "shared-dma-pool";
+                        linux,cma-default;
+                        reusable;
+                        reg = <0x0 0x58000000 0x0 0x20000000>;
+                };
+
+                mmp_reserved: linux,multimedia {
+                        compatible = "shared-dma-pool";
+                        reusable;
+                        reg = <0x0 0x78000000 0x0 0x10000000>;
+                };
+        };
+
+        mmngr {
+                compatible = "renesas,mmngr";
+                memory-region = <&mmp_reserved>;
+        };
+
+        mmngrbuf {
+                compatible = "renesas,mmngrbuf";
+        };
+
+        vspm_if {
+                compatible = "renesas,vspm_if";
+        };
+
+        pcie_refclk: clock-pcie-ref {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <100000000>;
 	};
+
+        osc1: cec-clock {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <12000000>;
+        };
 
 	reg_1p8v: regulator-1p8v {
 		compatible = "regulator-fixed";
@@ -90,6 +129,19 @@
 		#clock-cells = <0>;
 		clock-frequency = <32768>;
 	};
+
+#if (RZG3E_SMARC_MIPI_DSI_ENABLE)
+        dsi-to-hdmi-out {
+                compatible = "hdmi-connector";
+                type = "d";
+
+                port {
+                        dsi_to_hdmi_out: endpoint {
+                                remote-endpoint = <&adv7535_out>;
+                        };
+                };
+        };
+#endif
 };
 
 &audio_extal_clk {
@@ -113,6 +165,63 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+#if (RZG3E_SMARC_MIPI_DSI_ENABLE)
+&dsi {
+        status = "okay";
+
+        ports {
+#if (SW_LCD_EN)
+                port@0 {
+                        dsi_in0: endpoint {
+                                remote-endpoint = <&du0_out_dsi0>;
+                        };
+                };
+#else
+
+                port@1 {
+                        dsi_in1: endpoint {
+                                remote-endpoint = <&du1_out_dsi0>;
+                        };
+                };
+#endif
+
+                port@2 {
+                        dsi_out: endpoint {
+                                remote-endpoint = <&adv7535_in>;
+                                data-lanes = <1 2 3 4>;
+                        };
+                };
+        };
+};
+
+#if (SW_LCD_EN)
+&du0 {
+        status = "okay";
+
+        ports {
+                port@0 {
+                        du0_out_dsi0: endpoint {
+                                remote-endpoint = <&dsi_in0>;
+                        };
+                };
+        };
+};
+#else
+
+&du1 {
+        status = "okay";
+
+        ports {
+                port@0 {
+                        du1_out_dsi0: endpoint {
+                                remote-endpoint = <&dsi_in1>;
+                        };
+                };
+        };
+};
+#endif
+#endif
 
 &gpu {
 	status = "okay";
@@ -152,30 +261,86 @@
 
 		assigned-clocks = <&versa3 0>, <&versa3 1>,
 				  <&versa3 2>, <&versa3 3>,
-				  <&versa3 4>;
+                                  <&versa3 4>, <&versa3 5>;
 		assigned-clock-rates = <24000000>, <12288000>,
 				       <11289600>, <12288000>,
-				       <25000000>;
+                                       <25000000>, <25000000>;
 	};
+};
+
+&i2c7 {
+        pinctrl-0 = <&i2c7_pins>;
+        pinctrl-names = "default";
+        status = "okay";
+        clock-frequency = <400000>;
+
+#if ((RZG3E_SMARC_MIPI_DSI_ENABLE) && (!SW_HDMI_EN))
+        adv7535: hdmi1@3d {
+                compatible = "adi,adv7535";
+                reg = <0x3d>, <0x4d>, <0x2d>, <0x5d>;
+                reg-names = "main", "edid", "cec", "packet";
+                clocks = <&osc1>;
+                clock-names = "cec";
+                avdd-supply = <&reg_1p8v>;
+                dvdd-supply = <&reg_1p8v>;
+                pvdd-supply = <&reg_1p8v>;
+                a2vdd-supply = <&reg_1p8v>;
+                v3p3-supply = <&reg_3p3v>;
+                v1p2-supply = <&reg_1p8v>;
+                adi,dsi-lanes = <4>;
+                interrupts-extended = <&pinctrl RZG3E_GPIO(L, 4) IRQ_TYPE_EDGE_FALLING>;
+
+                ports {
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+
+                        port@0 {
+                                reg = <0>;
+                                adv7535_in: endpoint {
+                                        remote-endpoint = <&dsi_out>;
+                                };
+                        };
+
+                        port@1 {
+                                reg = <1>;
+                                adv7535_out: endpoint {
+                                        remote-endpoint = <&dsi_to_hdmi_out>;
+                                };
+                        };
+
+#if (!SW_LCD_EN)
+                        port@2 {
+                                reg = <2>;
+                                adv7535_codec_ep: endpoint {
+                                        remote-endpoint = <&rsnd_endpoint1>;
+                                };
+                        };
+#endif
+                };
+        };
+#endif
 };
 
 &i3c {
 	pinctrl-0 = <&i3c_pins>;
 	pinctrl-names = "default";
-	i2c-scl-hz = <400000>;
-	i3c-scl-hz = <12500000>;
-	status = "okay";
+        i2c-scl-hz = <1000000>;
+        i3c-scl-hz = <3000000>;
+
+        /* Enable when there is an I3C external device defined here */
+        /* status = "okay"; */
 };
 
 &mdio0 {
 	phy0: ethernet-phy@7 {
-		compatible = "ethernet-phy-id0022.1640";
+                compatible = "ethernet-phy-id0022.1640",
+                             "ethernet-phy-ieee802.3-c22";
 		reg = <7>;
 		interrupts-extended = <&icu 3 IRQ_TYPE_LEVEL_LOW>;
 		rxc-skew-psec = <1400>;
 		txc-skew-psec = <1400>;
 		rxdv-skew-psec = <0>;
-		txen-skew-psec = <0>;
+                txdv-skew-psec = <0>;
 		rxd0-skew-psec = <0>;
 		rxd1-skew-psec = <0>;
 		rxd2-skew-psec = <0>;
@@ -189,13 +354,14 @@
 
 &mdio1 {
 	phy1: ethernet-phy@7 {
-		compatible = "ethernet-phy-id0022.1640";
+                compatible = "ethernet-phy-id0022.1640",
+                             "ethernet-phy-ieee802.3-c22";
 		reg = <7>;
 		interrupts-extended = <&icu 16 IRQ_TYPE_LEVEL_LOW>;
 		rxc-skew-psec = <1400>;
 		txc-skew-psec = <1400>;
 		rxdv-skew-psec = <0>;
-		txen-skew-psec = <0>;
+                txdv-skew-psec = <0>;
 		rxd0-skew-psec = <0>;
 		rxd1-skew-psec = <0>;
 		rxd2-skew-psec = <0>;
@@ -220,20 +386,20 @@
 		};
 
 		ctrl {
-			pinmux = <RZG3E_PORT_PINMUX(A, 0, 1)>, /* MDIO */
-				 <RZG3E_PORT_PINMUX(A, 1, 1)>, /* MDC */
-				 <RZG3E_PORT_PINMUX(A, 2, 1)>, /* RX_CTL */
-				 <RZG3E_PORT_PINMUX(A, 3, 1)>, /* TX_CTL */
+                        pinmux = <RZG3E_PORT_PINMUX(A, 1, 1)>, /* MDC */
+                                 <RZG3E_PORT_PINMUX(A, 0, 1)>, /* MDIO */
+                                 <RZG3E_PORT_PINMUX(C, 2, 15)>, /* PHY_INTR (IRQ2) */
+                                 <RZG3E_PORT_PINMUX(C, 1, 1)>, /* RXD3 */
+                                 <RZG3E_PORT_PINMUX(C, 0, 1)>, /* RXD2 */
+                                 <RZG3E_PORT_PINMUX(B, 7, 1)>, /* RXD1 */
+                                 <RZG3E_PORT_PINMUX(B, 6, 1)>, /* RXD0 */
 				 <RZG3E_PORT_PINMUX(B, 0, 1)>, /* RXC */
-				 <RZG3E_PORT_PINMUX(B, 2, 1)>, /* TXD0 */
-				 <RZG3E_PORT_PINMUX(B, 3, 1)>, /* TXD1 */
-				 <RZG3E_PORT_PINMUX(B, 4, 1)>, /* TXD2 */
+                                 <RZG3E_PORT_PINMUX(A, 2, 1)>, /* RX_CTL */
 				 <RZG3E_PORT_PINMUX(B, 5, 1)>, /* TXD3 */
-				 <RZG3E_PORT_PINMUX(B, 6, 1)>, /* RXD0 */
-				 <RZG3E_PORT_PINMUX(B, 7, 1)>, /* RXD1 */
-				 <RZG3E_PORT_PINMUX(C, 0, 1)>, /* RXD2 */
-				 <RZG3E_PORT_PINMUX(C, 1, 1)>, /* RXD3 */
-				 <RZG3E_PORT_PINMUX(C, 2, 15)>; /* PHY_INTR (IRQ2) */
+                                 <RZG3E_PORT_PINMUX(B, 4, 1)>, /* TXD2 */
+                                 <RZG3E_PORT_PINMUX(B, 3, 1)>, /* TXD1 */
+                                 <RZG3E_PORT_PINMUX(B, 2, 1)>, /* TXD0 */
+                                 <RZG3E_PORT_PINMUX(A, 3, 1)>; /* TX_CTL */
 		};
 	};
 
@@ -244,20 +410,21 @@
 		};
 
 		ctrl {
-			pinmux = <RZG3E_PORT_PINMUX(D, 0, 1)>, /* MDIO */
-				 <RZG3E_PORT_PINMUX(D, 1, 1)>, /* MDC */
-				 <RZG3E_PORT_PINMUX(D, 2, 1)>, /* RX_CTL */
-				 <RZG3E_PORT_PINMUX(D, 3, 1)>, /* TX_CTL */
+
+                        pinmux = <RZG3E_PORT_PINMUX(D, 1, 1)>, /* MDC */
+                                 <RZG3E_PORT_PINMUX(D, 0, 1)>, /* MDIO */
+                                 <RZG3E_PORT_PINMUX(F, 2, 15)>, /* PHY_INTR (IRQ15) */
+                                 <RZG3E_PORT_PINMUX(F, 1, 1)>, /* RXD3 */
+                                 <RZG3E_PORT_PINMUX(F, 0, 1)>, /* RXD2 */
+                                 <RZG3E_PORT_PINMUX(E, 7, 1)>, /* RXD1 */
+                                 <RZG3E_PORT_PINMUX(E, 6, 1)>, /* RXD0 */
 				 <RZG3E_PORT_PINMUX(E, 0, 1)>, /* RXC */
-				 <RZG3E_PORT_PINMUX(E, 2, 1)>, /* TXD0 */
-				 <RZG3E_PORT_PINMUX(E, 3, 1)>, /* TXD1 */
-				 <RZG3E_PORT_PINMUX(E, 4, 1)>, /* TXD2 */
+                                 <RZG3E_PORT_PINMUX(D, 2, 1)>, /* RX_CTL */
 				 <RZG3E_PORT_PINMUX(E, 5, 1)>, /* TXD3 */
-				 <RZG3E_PORT_PINMUX(E, 6, 1)>, /* RXD0 */
-				 <RZG3E_PORT_PINMUX(E, 7, 1)>, /* RXD1 */
-				 <RZG3E_PORT_PINMUX(F, 0, 1)>, /* RXD2 */
-				 <RZG3E_PORT_PINMUX(F, 1, 1)>, /* RXD3 */
-				 <RZG3E_PORT_PINMUX(F, 2, 15)>; /* PHY_INTR (IRQ15) */
+                                 <RZG3E_PORT_PINMUX(E, 4, 1)>, /* TXD2 */
+                                 <RZG3E_PORT_PINMUX(E, 3, 1)>, /* TXD1 */
+                                 <RZG3E_PORT_PINMUX(E, 2, 1)>, /* TXD0 */
+                                 <RZG3E_PORT_PINMUX(D, 3, 1)>; /* TX_CTL */
 		};
 	};
 
@@ -270,6 +437,11 @@
 		pinmux = <RZG3E_PORT_PINMUX(3, 4, 1)>, /* SCL2 */
 			 <RZG3E_PORT_PINMUX(3, 5, 1)>; /* SDA2 */
 	};
+
+        i2c7_pins: i2c7 {
+                pinmux = <RZG3E_PORT_PINMUX(A, 4, 4)>, /* SCL */
+                         <RZG3E_PORT_PINMUX(A, 5, 4)>; /* SDA */
+        };
 
 	i3c_pins: i3c {
 		pinmux = <RZG3E_PORT_PINMUX(2, 0, 2)>, /* I3C0_SCL */
@@ -352,16 +524,25 @@
 		};
 	};
 
-	sound_clk_pins: sound-clk {
+        sound_clk_pins: sound_clk {
 		pinmux = <RZG3E_PORT_PINMUX(4, 2, 8)>, /* AUDIO_CLKB */
 			 <RZG3E_PORT_PINMUX(4, 3, 8)>; /* AUDIO_CLKC */
 	};
 
 	sound_pins: sound {
-		pinmux = <RZG3E_PORT_PINMUX(0, 2, 9)>, /* SSI3_SDATA */
-			 <RZG3E_PORT_PINMUX(0, 3, 9)>, /* SSI3_SCK */
-			 <RZG3E_PORT_PINMUX(0, 4, 9)>, /* SSI3_WS */
-			 <RZG3E_PORT_PINMUX(0, 5, 9)>; /* SSI4_SDATA */
+#if (!SW_LCD_EN)
+                ssi0 {
+                        pinmux = <RZG3E_PORT_PINMUX(7, 1, 9)>, /* SSI0_SCK */
+                                 <RZG3E_PORT_PINMUX(7, 2, 9)>, /* SSI0_WS */
+                                 <RZG3E_PORT_PINMUX(7, 0, 9)>; /* SSI0_SDATA */
+                };
+#endif
+                ssi34 {
+                        pinmux = <RZG3E_PORT_PINMUX(0, 3, 9)>, /* SSI3_SCK */
+                                 <RZG3E_PORT_PINMUX(0, 4, 9)>, /* SSI3_WS */
+                                 <RZG3E_PORT_PINMUX(0, 2, 9)>, /* SSI3_SDATA */
+                                 <RZG3E_PORT_PINMUX(0, 5, 9)>; /* SSI4_SDATA */
+                };
 	};
 
 	xspi_pins: xspi0 {
@@ -380,6 +561,10 @@
 
 &rtxin_clk {
 	clock-frequency = <32768>;
+};
+
+&adc {
+        status = "okay";
 };
 
 #if (SW_SD0_DEV_SEL)
@@ -439,6 +624,14 @@
 &xspi {
 	pinctrl-0 = <&xspi_pins>;
 	pinctrl-names = "default";
+
+        /*
+         * AT25QL128A flash chip is capable of running at 133MHz
+         * clock frequency. Set the clock frequency to the maximum 133MHz
+         * supported by the RZ/G3E SoC
+         */
+        assigned-clocks = <&cpg CPG_CORE R9A09G047_SPI_CLK_SPI>;
+        assigned-clock-rates = <133333334>;
 	status = "okay";
 
 	flash@0 {
@@ -446,7 +639,6 @@
 		reg = <0>;
 		vcc-supply = <&reg_1p8v>;
 		m25p,fast-read;
-		spi-max-frequency = <50000000>;
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 
@@ -471,4 +663,40 @@
 			};
 		};
 	};
+};
+
+&cmtw0 {
+        status = "okay";
+};
+
+&cmtw1 {
+        status = "okay";
+};
+
+&ostm2 {
+        status = "okay";
+};
+
+&ostm3 {
+        status = "okay";
+};
+
+&ostm4 {
+        status = "okay";
+};
+
+&ostm5 {
+        status = "okay";
+};
+
+&ostm6 {
+        status = "okay";
+};
+
+&ostm7 {
+        status = "okay";
+};
+
+&rtc {
+        status = "okay";
 };

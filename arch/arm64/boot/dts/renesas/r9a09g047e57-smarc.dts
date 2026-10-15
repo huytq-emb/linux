@@ -16,6 +16,25 @@
 #define SW_SER2_EN		1
 #define SW_SD0_DEV_SEL		0
 #define SW_SDIO_M2E		0
+#define SW_HDMI_EN                0
+
+/*
+ * Display support selection:
+ * 0 - disable display selection support
+ * 1 - enable display selection support
+ * for:
+ * - MIPI DSI: RZG3E_SMARC_MIPI_DSI_ENABLE
+ * - LVDS: RZG3E_SMARC_LVDS_ENABLE
+ * - Parallel RGB: SW_LCD_EN from above switch selection settings
+ */
+
+#define RZG3E_SMARC_MIPI_DSI_ENABLE        1
+#define RZG3E_SMARC_LVDS_ENABLE                0
+
+/* Only maximum 2 display selections are enabled at the same time */
+#if (RZG3E_SMARC_MIPI_DSI_ENABLE & RZG3E_SMARC_LVDS_ENABLE & SW_LCD_EN)
+#error "Only maximum 2 display selections are enabled at the same time"
+#endif
 
 #define PMOD_GPIO4		0
 #define PMOD_GPIO6		0
@@ -25,12 +44,26 @@
 #define KEY_2_GPIO		RZG3E_GPIO(8, 4)
 #define KEY_3_GPIO		RZG3E_GPIO(8, 5)
 
+/*
+ * Mode selection settings RSPI0_RSCI8_SEL:
+ * 1 - RSCI8                        0 - RSPI0 (default)
+ */
+
+#define RSPI0_RSCI8_SEL                0
+
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
 #include "r9a09g047e57.dtsi"
 #include "rzg3e-smarc-som.dtsi"
 #include "renesas-smarc2.dtsi"
+
+#if (RZG3E_SMARC_LVDS_ENABLE)
+#include "renesas-smarc2-dual-lvds-hdmi.dtsi"
+#endif
+#if (SW_LCD_EN)
+#include "renesas-smarc2-rgb.dtsi"
+#endif
 
 /*
  * SSI-DA7212
@@ -70,11 +103,16 @@
 
 	aliases {
 		i2c0 = &i2c0;
-		serial0 = &rsci4;
+                rtc0 = &rtc;
+#if (!SW_LCD_EN)
 		serial1 = &rsci9;
+#endif
+#if SW_SER0_PMOD && SW_SER2_EN
 		serial2 = &rsci2;
+#endif
 		serial3 = &scif0;
 		mmc1 = &sdhi1;
+                gpt0 = &gpt0;
 	};
 
 	vqmmc_sd1_pvdd: regulator-vqmmc-sd1-pvdd {
@@ -87,12 +125,31 @@
 		states = <3300000 0>, <1800000 1>;
 	};
 
+#if (SW_PDM_EN)
+        codec_test0: codec_test {
+                compatible = "linux,snd-soc-dummy";
+                #sound-dai-cells = <0>;
+                port {
+                        dummy_codec: endpoint {
+                                remote-endpoint = <&pdm_endpoint>;
+                        };
+                };
+        };
+#endif
+
 	sound_card: sound {
 		compatible = "audio-graph-card";
 
 		label = "snd-rzg3e";
 
-		dais = <&rsnd_port0>;	/* DA7212 */
+                dais = <&rsnd_port0        /* DA7212 */
+#if ((!SW_LCD_EN) && (RZG3E_SMARC_MIPI_DSI_ENABLE) && (!SW_HDMI_EN))
+                        &rsnd_port1        /* HDMI0  */
+#endif
+#if (SW_PDM_EN)
+                        &pdm_link        /* PDM0 */
+#endif
+                        >;
 	};
 };
 
@@ -112,7 +169,7 @@
 	channel1 {
 		status = "okay";
 #if (!SW_LCD_EN) && (SW_GPIO9_CAN1_STB)
-		phys = <&can_transceiver1>;
+                phys = <&can_transceiver 1>;
 #endif
 	};
 #endif
@@ -121,24 +178,42 @@
 	channel4 {
 		status = "okay";
 #if (SW_GPIO8_CAN0_STB)
-		phys = <&can_transceiver0>;
+                phys = <&can_transceiver 0>;
 #endif
 	};
 #endif
 };
 
-#if (!SW_LCD_EN) && (SW_GPIO8_CAN0_STB)
-&can_transceiver0 {
-	standby-gpios = <&pinctrl RZG3E_GPIO(5, 4) GPIO_ACTIVE_HIGH>;
+#if (!SW_LCD_EN) && (SW_GPIO8_CAN0_STB || SW_GPIO9_CAN1_STB)
+&can_transceiver {
+        standby-gpios =
+#if (SW_GPIO8_CAN0_STB)
+                        <&pinctrl RZG3E_GPIO(5, 4) GPIO_ACTIVE_HIGH>,
+#else
+                        <0>,
+#endif
+#if (SW_GPIO9_CAN1_STB)
+                        <&pinctrl RZG3E_GPIO(5, 5) GPIO_ACTIVE_HIGH>;
+#else
+                        <0>;
+#endif
 	status = "okay";
 };
 #endif
 
-#if (!SW_LCD_EN) && (SW_GPIO9_CAN1_STB)
-&can_transceiver1 {
-	standby-gpios = <&pinctrl RZG3E_GPIO(5, 5) GPIO_ACTIVE_HIGH>;
-	status = "okay";
+#if (!SW_LCD_EN) && (!SW_GPIO8_CAN0_STB) && (!SW_GPIO9_CAN1_STB)
+&gpt0 {
+        pinctrl-0 = <&gpt0_pins>;
+        pinctrl-names = "default";
+        status = "okay";
+        renesas,poegs = <&poeg0gd 4>;
 };
+
+&poeg0gd {
+	status = "okay";
+        renesas,poeg-config = <1>;
+};
+
 #endif
 
 &i2c0 {
@@ -150,6 +225,8 @@
 	da7212: codec@1a {
 		compatible = "dlg,da7212";
 		#sound-dai-cells = <0>;
+                #address-cells = <1>;
+                #size-cells = <0>;
 		reg = <0x1a>;
 
 		clocks = <&versa3 1>;
@@ -175,6 +252,11 @@
 	};
 };
 
+&pcie {
+        pinctrl-0 = <&pcie_pins>;
+        pinctrl-names = "default";
+};
+
 &keys {
 	pinctrl-0 = <&nmi_pins>;
 	pinctrl-names = "default";
@@ -198,45 +280,52 @@
 #endif
 };
 
-&pcie {
-	pinctrl-0 = <&pcie_pins>;
-	pinctrl-names = "default";
-};
-
 &pinctrl {
 	canfd_pins: canfd {
+#if (!SW_PDM_EN)
 		can1_pins: can1 {
 			pinmux = <RZG3E_PORT_PINMUX(L, 2, 3)>, /* RX */
 				 <RZG3E_PORT_PINMUX(L, 3, 3)>; /* TX */
 		};
+#endif
 
+#if (!SW_LCD_EN)
 		can4_pins: can4 {
 			pinmux = <RZG3E_PORT_PINMUX(5, 2, 3)>, /* RX */
 				 <RZG3E_PORT_PINMUX(5, 3, 3)>; /* TX */
 		};
+#endif
 	};
+
+#if (!SW_LCD_EN)
+        gpt0_pins: gpt0 {
+                pinmux = <RZG3E_PORT_PINMUX(5, 4, 10)>, /* GTIOC4A */
+                         <RZG3E_PORT_PINMUX(5, 5, 10)>; /* GTIOC4B */
+        };
+#endif
 
 	i2c0_pins: i2c0 {
 		pinmux = <RZG3E_PORT_PINMUX(D, 4, 4)>, /* SCL0 */
 			 <RZG3E_PORT_PINMUX(D, 5, 4)>; /* SDA0 */
 	};
 
-	nmi_pins: nmi {
-		pinmux = <RZG3E_PORT_PINMUX(S, 0, 0)>; /* NMI */
-		input-schmitt-enable;
-	};
-
 	pcie-clkreq-n-hog {
 		gpio-hog;
 		gpios = <RZG3E_GPIO(4, 5) GPIO_ACTIVE_HIGH>;
 		output-low;
-		line-name = "PCIE_M2B_CKREQ";
+                line-name = "pcie_clkreq_n";
 	};
 
 	pcie_pins: pcie {
 		pinmux = <RZG3E_PORT_PINMUX(G, 7, 1)>; /* PCIE_RST_OUT# */
 	};
 
+        nmi_pins: nmi {
+                pinmux = <RZG3E_PORT_PINMUX(S, 0, 0)>; /* NMI */
+                input-schmitt-enable;
+        };
+
+#if SW_SER0_PMOD && SW_SER2_EN
 	rsci2_pins: rsci2 {
 		pinmux = <RZG3E_PORT_PINMUX(1, 0, 1)>, /* RXD2 */
 			 <RZG3E_PORT_PINMUX(1, 1, 1)>, /* TXD2 */
@@ -244,32 +333,28 @@
 			 <RZG3E_PORT_PINMUX(1, 3, 1)>; /* RTS2N */
 		bias-pull-up;
 	};
+#endif
 
-	rsci4_pins: rsci4 {
-		pinmux = <RZG3E_PORT_PINMUX(7, 6, 5)>, /* RXD4 */
-			 <RZG3E_PORT_PINMUX(7, 7, 5)>, /* TXD4 */
-			 <RZG3E_PORT_PINMUX(8, 0, 6)>, /* CTS4N */
-			 <RZG3E_PORT_PINMUX(8, 1, 5)>; /* RTS4N */
-		bias-pull-up;
-	};
-
+#if (!SW_LCD_EN)
 	rsci9_pins: rsci9 {
 		pinmux = <RZG3E_PORT_PINMUX(8, 2, 5)>, /* RXD9 */
 			 <RZG3E_PORT_PINMUX(8, 3, 5)>; /* TXD9 */
 		bias-pull-up;
 	};
-
-	rspi0_pins: rspi0 {
-		pinmux = <RZG3E_PORT_PINMUX(M, 4, 2)>, /* MISOA */
-			 <RZG3E_PORT_PINMUX(M, 5, 2)>, /* MOSIA */
-			 <RZG3E_PORT_PINMUX(M, 6, 2)>, /* RSPCKA */
-			 <RZG3E_PORT_PINMUX(M, 7, 2)>; /* SSLA0 */
-	};
+#endif
 
 	scif_pins: scif {
 		pins = "SCIF_TXD", "SCIF_RXD";
 		renesas,output-impedance = <1>;
 	};
+
+#if (RSPI0_RSCI8_SPI_SEL)
+        rsci8_master_pins: rscri8_master {
+                pinmux = <RZG3E_PORT_PINMUX(M, 5, 5)>, /* SCI8_TXD_MOSI_SDA */
+                         <RZG3E_PORT_PINMUX(M, 4, 5)>, /* SCI8_RXD_MISO_SCL */
+                         <RZG3E_PORT_PINMUX(M, 6, 5)>; /* SCI8_SCLK */
+        };
+#endif
 
 	sd1-pwr-en-hog {
 		gpio-hog;
@@ -296,26 +381,44 @@
 		};
 	};
 
+        usb20_pins: usb20 {
+                ovc {
+                        pinmux =  <RZG3E_PORT_PINMUX(0, 0, 12)>; /* OVC */
+                        bias-pull-up;
+                };
+
+                vbus {
+                        pinmux = <RZG3E_PORT_PINMUX(0, 1, 12)>; /* VBUS */
+                };
+        };
+
+        usb21_pins: usb21 {
+                ovc {
+                        pinmux = <RZG3E_PORT_PINMUX(G, 6, 12)>; /* OVC */
+                        bias-pull-up;
+                };
+
+                vbus {
+                        pinmux = <RZG3E_PORT_PINMUX(K, 3, 12)>; /* VBUS */
+                };
+        };
+
 	usb3_pins: usb3 {
 		pinmux = <RZG3E_PORT_PINMUX(4, 1, 12)>, /* USB30_VBUSEN */
 			 <RZG3E_PORT_PINMUX(4, 0, 12)>; /* USB30_OVRCURN */
 	};
+
+#if (SW_PDM_EN)
+        pdm0_pins: pdm0 {
+                pinmux = <RZG3E_PORT_PINMUX(L, 2, 7)>, /* PDMCLK01 */
+                         <RZG3E_PORT_PINMUX(L, 3, 7)>; /* PDMDAT01 */
+        };
+#endif
 };
 
 #if SW_SER0_PMOD && SW_SER2_EN
 &rsci2 {
 	pinctrl-0 = <&rsci2_pins>;
-	pinctrl-names = "default";
-
-	uart-has-rtscts;
-
-	status = "okay";
-};
-#endif
-
-#if !SW_LCD_EN
-&rsci4 {
-	pinctrl-0 = <&rsci4_pins>;
 	pinctrl-names = "default";
 
 	uart-has-rtscts;
@@ -333,19 +436,26 @@
 };
 #endif
 
-&rspi0 {
-	pinctrl-0 = <&rspi0_pins>;
+&scif0 {
+        pinctrl-0 = <&scif_pins>;
 	pinctrl-names = "default";
-	#address-cells = <1>;
-	#size-cells = <0>;
+};
+
+#if (RSPI0_RSCI8_SPI_SEL)
+&rsci8 {
+        pinctrl-0 = <&rsci8_master_pins>;
+        pinctrl-names = "master";
 
 	status = "okay";
-};
 
-&scif0 {
-	pinctrl-0 = <&scif_pins>;
-	pinctrl-names = "default";
+        renesas,rsci_spi;
+        num-cs = <1>;
+        #size-cells = <0>;
+        #address-cells = <1>;
+        /* Using cs-gpios property when is master mode */
+        cs-gpios = <&pinctrl RZG3E_GPIO(M, 7) GPIO_ACTIVE_HIGH>;
 };
+#endif
 
 &sdhi1 {
 	pinctrl-0 = <&sdhi1_pins>;
@@ -385,6 +495,20 @@
 				capture = <&ssi4>, <&src0>, <&dvc0>;
 			};
 		};
+
+#if ((!SW_LCD_EN) && (RZG3E_SMARC_MIPI_DSI_ENABLE) && (!SW_HDMI_EN))
+                rsnd_port1: port@1 {
+                        reg = <1>;
+                        rsnd_endpoint1: endpoint {
+                                remote-endpoint = <&adv7535_codec_ep>;
+                                dai-format = "i2s";
+                                bitclock-master = <&rsnd_endpoint1>;
+                                frame-master = <&rsnd_endpoint1>;
+
+                                playback = <&ssi0>;
+                        };
+                };
+#endif
 	};
 };
 
@@ -392,13 +516,52 @@
 	shared-pin;
 };
 
-&usb3_phy {
+#if (SW_PDM_EN)
+&pdm0 {
+        pinctrl-0 = <&pdm0_pins>;
+        pinctrl-names = "default";
+	status = "okay";
+
+        pdm_link: port {
+                pdm_endpoint: endpoint {
+                        remote-endpoint = <&dummy_codec>;
+                };
+        };
+
+        channel1 {
+                status = "okay";
+        };
+};
+#endif
+
+&usb20phyrst {
+        status = "okay";
+};
+
+&usb21phyrst {
+        status = "okay";
+};
+
+&usb2_phy0 {
+        pinctrl-0 = <&usb20_pins>;
+        pinctrl-names = "default";
+
+        vbus-supply = <&usb2_phy0_vbus_otg>;
+        status = "okay";
+};
+
+&usb2_phy0_vbus_otg {
+        status = "okay";
+};
+
+&usb2_phy1 {
+        pinctrl-0 = <&usb21_pins>;
+	pinctrl-names = "default";
+
 	status = "okay";
 };
 
 &xhci {
-	pinctrl-0 = <&usb3_pins>;
-	pinctrl-names = "default";
-
-	status = "okay";
+        pinctrl-0 = <&usb3_pins>;
+        pinctrl-names = "default";
 };

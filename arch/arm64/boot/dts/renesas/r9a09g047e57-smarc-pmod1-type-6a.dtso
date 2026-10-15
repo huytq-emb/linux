@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * RZ/G3E SMARC Carrier-II PMOD1 Type 6A (I2C)
+ *
+ * PMOD1 pin     Signal             RZ/G3E pin
+ *         3     I2C_GP_CK          P32 (RIIC1 SCL1)
+ *         4     I2C_GP_DAT         P33 (RIIC1 SDA1)
+ *      5/11     GND
+ *      6/12     PWR_PMOD1
+ *
+ * I2C1 and its pinmux stay enabled in the base DT for the DA7212 codec.
+ * This overlay selects 100 kHz for the shared bus. Add the attached I2C
+ * peripheral as a child of &i2c1, using an address free on this bus.
+ * Select the supply using PMOD_PWR_SEL. Auxiliary pins 1/2 and 7-10
+ * retain their base-DT configuration and require module-specific routing.
+ */
+
+/dts-v1/;
+/plugin/;
+
+&i2c1 {
+	clock-frequency = <100000>;
+};

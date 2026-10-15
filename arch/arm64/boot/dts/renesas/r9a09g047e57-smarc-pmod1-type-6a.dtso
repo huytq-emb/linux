@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * RZ/G3E SMARC Carrier-II PMOD1 Type 6A (I2C)
+ *
+ * PMOD1_6A pin     Signal             RZ/G3E pin
+ *             1   GPIO10             P65
+ *             2   GPIO11             P56
+ *             3   I2C_GP_CK          P32 (RIIC1 SCL1)
+ *             4   I2C_GP_DAT         P33 (RIIC1 SDA1)
+ *          5/11   GND
+ *          6/12   PWR_PMOD1
+ *             7   GPIO8              P54
+ *             8   GPIO9              P55
+ *             9   GPIO12             P66
+ *            10   GPIO13             P64
+ *
+ * For auxiliary GPIOs, set SYS.5 on the SoM to OFF, route GPIO8/9 to
+ * PMOD with SW_GPIO_CAN_PMOD and GPIO10 to PMOD1 with SW_GPIO_OPT_SEL.
+ * The base DTS must use SW_LCD_EN = 0 and SW_GPIO8_CAN0_STB =
+ * SW_GPIO9_CAN1_STB = 0. Enable the GPIO8/9/12/13 level shifter with
+ * SW_GPIO_PMOD high. Select the module supply with PMOD_PWR_SEL.
+ * GPIOs are left unclaimed for the attached module.
+ *
+ * I2C_GP is shared with the DA7212 codec, the general-purpose header
+ * and M.2 Key-E. Keep the codec enabled and add the actual PMOD I2C
+ * peripheral as a child of &i2c1, using an address free on this bus.
+ * The shared controller and its pinmux stay in the base DT for audio;
+ * this overlay selects the bus speed for PMOD use.
+ */
+
+/dts-v1/;
+/plugin/;
+
+&i2c1 {
+	clock-frequency = <100000>;
+};

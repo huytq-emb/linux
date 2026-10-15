@@ -7,20 +7,6 @@
 
 /dts-v1/;
 
-/* Switch selection settings */
-#define SW_GPIO8_CAN0_STB	0
-#define SW_GPIO9_CAN1_STB	0
-#define SW_LCD_EN		0
-#define SW_PDM_EN		0
-#define SW_SER0_PMOD		1
-#define SW_SER2_EN		1
-#define SW_SD0_DEV_SEL		0
-#define SW_SDIO_M2E		0
-
-#define PMOD_GPIO4		0
-#define PMOD_GPIO6		0
-#define PMOD_GPIO7		0
-
 #define KEY_1_GPIO		RZG3E_GPIO(3, 1)
 #define KEY_2_GPIO		RZG3E_GPIO(8, 4)
 #define KEY_3_GPIO		RZG3E_GPIO(8, 5)
@@ -28,6 +14,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+#include "rzg3e-smarc-switches.h"
 #include "r9a09g047e57.dtsi"
 #include "rzg3e-smarc-som.dtsi"
 #include "renesas-smarc2.dtsi"
@@ -70,7 +57,6 @@
 
 	aliases {
 		i2c0 = &i2c0;
-		serial0 = &rsci4;
 		serial1 = &rsci9;
 		serial2 = &rsci2;
 		serial3 = &scif0;
@@ -185,15 +171,9 @@
 		label = "SLEEP";
 		debounce-interval = <20>;
 	};
-#if PMOD_GPIO4
-	/delete-node/ key-1;
-#endif
 
-#if SW_LCD_EN || PMOD_GPIO6
+#if SW_LCD_EN
 	/delete-node/ key-2;
-#endif
-
-#if SW_LCD_EN || PMOD_GPIO7
 	/delete-node/ key-3;
 #endif
 };
@@ -245,25 +225,10 @@
 		bias-pull-up;
 	};
 
-	rsci4_pins: rsci4 {
-		pinmux = <RZG3E_PORT_PINMUX(7, 6, 5)>, /* RXD4 */
-			 <RZG3E_PORT_PINMUX(7, 7, 5)>, /* TXD4 */
-			 <RZG3E_PORT_PINMUX(8, 0, 6)>, /* CTS4N */
-			 <RZG3E_PORT_PINMUX(8, 1, 5)>; /* RTS4N */
-		bias-pull-up;
-	};
-
 	rsci9_pins: rsci9 {
 		pinmux = <RZG3E_PORT_PINMUX(8, 2, 5)>, /* RXD9 */
 			 <RZG3E_PORT_PINMUX(8, 3, 5)>; /* TXD9 */
 		bias-pull-up;
-	};
-
-	rspi0_pins: rspi0 {
-		pinmux = <RZG3E_PORT_PINMUX(M, 4, 2)>, /* MISOA */
-			 <RZG3E_PORT_PINMUX(M, 5, 2)>, /* MOSIA */
-			 <RZG3E_PORT_PINMUX(M, 6, 2)>, /* RSPCKA */
-			 <RZG3E_PORT_PINMUX(M, 7, 2)>; /* SSLA0 */
 	};
 
 	scif_pins: scif {
@@ -313,17 +278,6 @@
 };
 #endif
 
-#if !SW_LCD_EN
-&rsci4 {
-	pinctrl-0 = <&rsci4_pins>;
-	pinctrl-names = "default";
-
-	uart-has-rtscts;
-
-	status = "okay";
-};
-#endif
-
 #if (!SW_LCD_EN)
 &rsci9 {
 	pinctrl-0 = <&rsci9_pins>;
@@ -332,15 +286,6 @@
 	status = "okay";
 };
 #endif
-
-&rspi0 {
-	pinctrl-0 = <&rspi0_pins>;
-	pinctrl-names = "default";
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	status = "okay";
-};
 
 &scif0 {
 	pinctrl-0 = <&scif_pins>;

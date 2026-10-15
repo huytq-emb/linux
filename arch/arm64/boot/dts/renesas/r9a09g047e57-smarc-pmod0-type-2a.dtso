@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * RZ/G3E SMARC Carrier-II PMOD0 Type 2A (SPI)
+ *
+ * PMOD0_2A pin     Signal             RZ/G3E pin
+ *             1   SPI1_CS0#          PM7 (RSPI0 SSLA0)
+ *             2   SPI1_DO            PM5 (RSPI0 MOSIA)
+ *             3   SPI1_DIN           PM4 (RSPI0 MISOA)
+ *             4   SPI1_CK            PM6 (RSPI0 RSPCKA)
+ *          5/11   GND
+ *          6/12   PWR_PMOD0
+ *             7   GPIO4              P31
+ *             8   GPIO5              P36
+ *             9   GPIO6              P84
+ *            10   GPIO7              P85
+ *
+ * Set SYS.5 on the SoM to OFF (SW_LCD_EN = 0 in the base DTS) to
+ * route GPIO6/7 to the carrier. Set SW_PMOD0_PWR_SLP to GPIO6/7 rather
+ * than POWER_BTN#/SLEEP#. Select the module supply with PMOD_PWR_SEL.
+ *
+ * Release GPIO4/6/7 from the user keys. The buttons remain physically
+ * connected to these signals. The auxiliary GPIOs are left unclaimed
+ * for the attached module; only SSLA0 is configured as a chip select.
+ * Add a child of &rspi0 describing the actual SPI peripheral.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+#include "rzg3e-smarc-switches.h"
+
+&keys {
+	key-1 {
+		status = "disabled";
+	};
+
+#if !SW_LCD_EN
+	key-2 {
+		status = "disabled";
+	};
+
+	key-3 {
+		status = "disabled";
+	};
+#endif
+};
+
+&pinctrl {
+	rspi0_pins: rspi0 {
+		pinmux = <RZG3E_PORT_PINMUX(M, 4, 2)>, /* MISOA */
+			 <RZG3E_PORT_PINMUX(M, 5, 2)>, /* MOSIA */
+			 <RZG3E_PORT_PINMUX(M, 6, 2)>, /* RSPCKA */
+			 <RZG3E_PORT_PINMUX(M, 7, 2)>; /* SSLA0 */
+	};
+};
+
+&rspi0 {
+	pinctrl-0 = <&rspi0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};

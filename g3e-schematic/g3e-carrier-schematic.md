@@ -223,3 +223,7 @@ Decoupling: C148, C152 (1.8V), C151, C147 (PWR_PMOD0), C228, C131, C94 (1.8V), C
 | GPIO6, GPIO7, GPIO8_PMOD, GPIO9_PMOD, GPIO10_PMOD1, GPIO11, GPIO12, GPIO13, SER0_*, POWER_BTN#, SLEEP#, I2S0_*, AUDIO_MCK | — | **not on module sheets 15–17** | needs other module sheets |
 
 
+## 4. Supplemental PMOD analysis
+
+See [PMOD alternate functions](g3e-pmod-alternate-functions.md) for the
+per-pin function tables, candidate peripherals and carrier path constraints.

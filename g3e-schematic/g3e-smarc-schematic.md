@@ -288,3 +288,7 @@ format_note: >
 
 
 
+## 6. Supplemental PMOD analysis
+
+See [PMOD alternate functions](g3e-pmod-alternate-functions.md) for the
+per-pin function tables, candidate peripherals and carrier path constraints.

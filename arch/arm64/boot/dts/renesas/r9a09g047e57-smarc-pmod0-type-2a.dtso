@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * RZ/G3E SMARC Carrier-II PMOD0 Type 2A (SPI)
+ *
+ * PMOD0 pin     Signal             RZ/G3E pin
+ *         1     SPI1_CS0#          PM7 (RSPI0 SSLA0 or RSCI8 GPIO CS)
+ *         2     SPI1_DO            PM5 (RSPI0 MOSIA or RSCI8 MOSI)
+ *         3     SPI1_DIN           PM4 (RSPI0 MISOA or RSCI8 MISO)
+ *         4     SPI1_CK            PM6 (RSPI0 RSPCKA or RSCI8 SCK)
+ *      5/11     GND
+ *      6/12     PWR_PMOD0
+ *
+ * Select RSPI0 (0, default) or RSCI8 (1) in rzg3e-smarc-switches.h and rebuild.
+ * The RSCI8 option preserves the BSP SPI configuration and requires a
+ * driver supporting renesas,rsci_spi and the "master" pinctrl state;
+ * the mainline RSCI UART driver does not provide this SPI mode.
+ * Only one controller may own PM4-PM7. Add the attached SPI peripheral
+ * as a child of the selected controller.
+ *
+ * Select the supply using PMOD_PWR_SEL. The user keys on GPIO4/6/7 are
+ * enabled here by default. Set the corresponding PMOD_GPIO macro to 1
+ * in rzg3e-smarc-switches.h to release that key's pin. GPIO6/7 keys are omitted
+ * when SW_LCD_EN = 1. Their PMOD routing requires SYS.5 OFF (LCD off).
+ * Pins 9/10 also require SW_PMOD0_PWR_SLP to select the GPIO routing.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+
+#include "rzg3e-smarc-switches.h"
+
+&keys {
+#if !PMOD_GPIO4
+	key-1 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(3, 1) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_1>;
+		label = "USER_SW1";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+#if !SW_LCD_EN && !PMOD_GPIO6
+	key-2 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(8, 4) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_2>;
+		label = "USER_SW2";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+#if !SW_LCD_EN && !PMOD_GPIO7
+	key-3 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(8, 5) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_3>;
+		label = "USER_SW3";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+};
+
+&pinctrl {
+#if RSPI0_RSCI8_SEL
+	rsci8_master_pins: rsci8-master {
+		pinmux = <RZG3E_PORT_PINMUX(M, 5, 5)>, /* MOSI8 */
+			 <RZG3E_PORT_PINMUX(M, 4, 5)>, /* MISO8 */
+			 <RZG3E_PORT_PINMUX(M, 6, 5)>; /* SCK8 */
+	};
+#else
+	rspi0_pins: rspi0 {
+		pinmux = <RZG3E_PORT_PINMUX(M, 4, 2)>, /* MISOA */
+			 <RZG3E_PORT_PINMUX(M, 5, 2)>, /* MOSIA */
+			 <RZG3E_PORT_PINMUX(M, 6, 2)>, /* RSPCKA */
+			 <RZG3E_PORT_PINMUX(M, 7, 2)>; /* SSLA0 */
+	};
+#endif
+};
+
+#if RSPI0_RSCI8_SEL
+&rspi0 {
+	status = "disabled";
+};
+
+&rsci8 {
+	pinctrl-0 = <&rsci8_master_pins>;
+	pinctrl-names = "master";
+	status = "okay";
+
+	renesas,rsci_spi;
+	num-cs = <1>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	cs-gpios = <&pinctrl RZG3E_GPIO(M, 7) GPIO_ACTIVE_HIGH>;
+};
+#else
+&rspi0 {
+	pinctrl-0 = <&rspi0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&rsci8 {
+	status = "disabled";
+};
+#endif

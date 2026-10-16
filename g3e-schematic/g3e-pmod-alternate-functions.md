@@ -127,3 +127,69 @@ configures GTIOC4A/B through `&gpt0`.
   separate pins), XSPI0 as memory (only IO4–7, with direction limitations),
   SDHI and Ethernet. Individual control-signal functions in the tables
   do not constitute those complete interfaces.
+
+## 4. Overlay configuration in this tree
+
+`arch/arm64/boot/dts/renesas/rzg3e-smarc-switches.h` is the shared configuration
+for the G3E base DTS, SoM DTSI and all three PMOD overlays. Its naming,
+include guard, grouped definitions and selection comments follow the
+upstream `rzg3s-smarc-switches.h` pattern. Configuration macros are
+defined directly in the header; edit them there rather than overriding
+them with compiler `-D` options. The shared carrier DTSI inherits these
+definitions from the base DTS. Edit the header
+and rebuild the base DTB and every overlay that will be used with it.
+Defaults preserve the supplied switch settings; PMOD peripherals are
+now enabled only by their respective overlays.
+
+The base DT leaves RSPI0, RSCI8, RSCI4, GPT0, POEG0GD and I2C1 disabled
+and has no USER_SW1/2/3 nodes. The sleep key remains in the base DT.
+The G3E base DTS removes the inherited USER_SW1/2/3 nodes with
+`/delete-node/`; Type 2A supplies their complete definitions when selected.
+The `KEY_1_GPIO`, `KEY_2_GPIO` and `KEY_3_GPIO` mappings remain in the
+G3E base for preprocessing the shared carrier definitions before removal.
+The shared carrier DTSI and the G3L board DTS are unchanged.
+
+| Overlay | Configuration it enables | Header selectors and routing checks |
+|---|---|---|
+| PMOD0 Type 2A | RSPI0 or BSP RSCI8 SPI; optional USER_SW1/2/3 | `RSPI0_RSCI8_SEL`: 0 = RSPI0, 1 = RSCI8. `PMOD_GPIO4/6/7`: 0 = user key, 1 = release that key's pin. `SW_LCD_EN=1` always omits USER_SW2/3 on P84/P85. |
+| PMOD1 Type 3A | RSCI4 UART and its pinmux | Compilation fails unless `SW_LCD_EN=0` and `SW_SER0_PMOD=1`. |
+| PMOD1 Type 6A | I2C1 on P32/P33 at 100 kHz; optional GPT PWM on P54/P55 and POEG0GD | PWM requires `PMOD_PWM_ENABLE=1` (default), `SW_LCD_EN=0` and both `SW_GPIO8_CAN0_STB`/`SW_GPIO9_CAN1_STB` set to 0. I2C1 is enabled independently. |
+
+With `SW_LCD_EN=1`, Type 2A retains SPI and, unless `PMOD_GPIO4=1`,
+USER_SW1. Type 6A retains I2C1 but does not configure GPT/POEG or their
+pinmux. Type 3A cannot be used with LCD. Build the compatible targets
+explicitly instead of requesting all three composites in this mode, once
+the LCD board support files are available:
+
+```sh
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+  renesas/r9a09g047e57-smarc.dtb \
+  renesas/r9a09g047e57-smarc-pmod0-type-2a.dtb \
+  renesas/r9a09g047e57-smarc-pmod1-type-6a.dtb
+```
+
+The supplied source snapshot references `renesas-smarc2-rgb.dtsi` but
+does not contain that file. A full base-DTB build with `SW_LCD_EN=1` is
+therefore currently blocked independently of the PMOD changes. The
+overlays themselves can be compiled to check their LCD conditions.
+
+Type 6A is also required for DA7212 audio: the codec node stays in the
+base DTS, but its shared I2C1 bus and pinmux are enabled only by this
+overlay. `PMOD_PWM_ENABLE=0` still enables I2C1. If CAN uses either
+GPIO8/9 pin, the entire PWM pair is omitted. The GPT/POEG configuration
+and RSCI8 SPI option require the corresponding BSP drivers; the
+mainline RSCI UART driver does not implement `renesas,rsci_spi`.
+
+The header does not read or change physical switches. For PMOD UART,
+SYS.5 must be OFF and SW_OPT_MUX.4 OFF (SER0 routed to PMOD). GPIO6/7
+require GPIO routing on SW_PMOD0_PWR_SLP and LCD off. PWM requires LCD
+off, SW_GPIO_CAN_PMOD on the PMOD side and SW_GPIO_PMOD enabling IC17.
+Select the PMOD supply with PMOD_PWR_SEL.
+
+These conditions protect artifacts built with the same header settings.
+An overlay built with LCD off can still conflict with a base DTB built
+with LCD on: the overlay loader does not check preprocessor settings.
+Deploy matching artifacts together. Rebuild from the base DT when
+changing modes; stacking another version of an overlay does not remove
+nodes added by an earlier version. Releasing a key or PWM pin does not
+by itself configure an alternative peripheral or change hardware routing.

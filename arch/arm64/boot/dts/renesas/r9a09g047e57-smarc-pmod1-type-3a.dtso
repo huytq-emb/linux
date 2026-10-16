@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * RZ/G3E SMARC Carrier-II PMOD1 Type 3A (UART)
+ *
+ * PMOD1 pin     Signal             RZ/G3E pin
+ *         1     SER0_CTS#          P80 (RSCI4 CTS4N)
+ *         2     SER0_TX            P77 (RSCI4 TXD4)
+ *         3     SER0_RX            P76 (RSCI4 RXD4)
+ *         4     SER0_RTS#          P81 (RSCI4 RTS4N)
+ *      5/11     GND
+ *      6/12     PWR_PMOD1
+ *
+ * Set SYS.5 to OFF (SW_LCD_EN = 0 in rzg3e-smarc-switches.h) and SW_OPT_MUX.4
+ * to OFF (SW_SER0_PMOD = 1) to route SER0 to PMOD1 and enable IC22.
+ * The shared configuration rejects LCD or non-PMOD SER0 routing.
+ * Select the supply using PMOD_PWR_SEL.
+ * Auxiliary pins 7-10 retain their base-DT configuration.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+#include "rzg3e-smarc-switches.h"
+
+#if SW_LCD_EN || !SW_SER0_PMOD
+#error "PMOD1 Type 3A requires SW_LCD_EN=0 and SW_SER0_PMOD=1"
+#endif
+
+&pinctrl {
+	rsci4_pins: rsci4 {
+		pinmux = <RZG3E_PORT_PINMUX(7, 6, 5)>, /* RXD4 */
+			 <RZG3E_PORT_PINMUX(7, 7, 5)>, /* TXD4 */
+			 <RZG3E_PORT_PINMUX(8, 0, 6)>, /* CTS4N */
+			 <RZG3E_PORT_PINMUX(8, 1, 5)>; /* RTS4N */
+		bias-pull-up;
+	};
+};
+
+&rsci4 {
+	pinctrl-0 = <&rsci4_pins>;
+	pinctrl-names = "default";
+	uart-has-rtscts;
+	status = "okay";
+};

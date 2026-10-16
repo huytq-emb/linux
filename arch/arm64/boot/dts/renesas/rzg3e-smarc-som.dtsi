@@ -228,12 +228,6 @@
 	mali-supply = <&reg_vdd0p8v_others>;
 };
 
-&i2c1 {
-	pinctrl-0 = <&i2c1_pins>;
-	pinctrl-names = "default";
-	status = "okay";
-};
-
 &i2c2 {
 	pinctrl-0 = <&i2c2_pins>;
 	pinctrl-names = "default";
@@ -426,11 +420,6 @@
                                  <RZG3E_PORT_PINMUX(E, 2, 1)>, /* TXD0 */
                                  <RZG3E_PORT_PINMUX(D, 3, 1)>; /* TX_CTL */
 		};
-	};
-
-	i2c1_pins: i2c1 {
-		pinmux = <RZG3E_PORT_PINMUX(3, 2, 1)>, /* SCL1 */
-			 <RZG3E_PORT_PINMUX(3, 3, 1)>; /* SDA1 */
 	};
 
 	i2c2_pins: i2c {

@@ -5,19 +5,64 @@
  * PMOD1 pin     Signal             RZ/G3E pin
  *         3     I2C_GP_CK          P32 (RIIC1 SCL1)
  *         4     I2C_GP_DAT         P33 (RIIC1 SDA1)
+ *         7     GPIO8_PMOD         P54 (GTIOC4A or GPIO)
+ *         8     GPIO9_PMOD         P55 (GTIOC4B or GPIO)
  *      5/11     GND
  *      6/12     PWR_PMOD1
  *
- * I2C1 and its pinmux stay enabled in the base DT for the DA7212 codec.
- * This overlay selects 100 kHz for the shared bus. Add the attached I2C
- * peripheral as a child of &i2c1, using an address free on this bus.
- * Select the supply using PMOD_PWR_SEL. Auxiliary pins 1/2 and 7-10
- * retain their base-DT configuration and require module-specific routing.
+ * This overlay enables I2C1 and selects 100 kHz for the shared bus.
+ * The DA7212 codec remains described in the base DT, but requires this
+ * overlay to make its I2C bus available. Add the attached I2C peripheral
+ * as a child of &i2c1, using an address free on this bus.
+ * Select the supply using PMOD_PWR_SEL. PMOD_PWM_ENABLE selects GPT PWM
+ * on pins 7/8 (1, default) or leaves them free for GPIO use (0).
+ * PWM requires SYS.5 OFF, SW_GPIO_CAN_PMOD on the PMOD side, and
+ * SW_GPIO_PMOD high to enable IC17. In the base DTS, SW_LCD_EN and both
+ * SW_GPIO8_CAN0_STB/SW_GPIO9_CAN1_STB must be 0 when using these PMOD pins.
+ * The GPT/POEG configuration requires the corresponding BSP drivers.
+ * Auxiliary pins 1/2 and 9/10 require module-specific routing.
  */
 
 /dts-v1/;
 /plugin/;
 
+#include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+
+#ifndef PMOD_PWM_ENABLE
+#define PMOD_PWM_ENABLE	1
+#endif
+
+&pinctrl {
+	i2c1_pins: i2c1 {
+		pinmux = <RZG3E_PORT_PINMUX(3, 2, 1)>, /* SCL1 */
+			 <RZG3E_PORT_PINMUX(3, 3, 1)>; /* SDA1 */
+	};
+
+#if PMOD_PWM_ENABLE
+	gpt0_pins: gpt0 {
+		pinmux = <RZG3E_PORT_PINMUX(5, 4, 10)>, /* GTIOC4A */
+			 <RZG3E_PORT_PINMUX(5, 5, 10)>; /* GTIOC4B */
+	};
+#endif
+};
+
+#if PMOD_PWM_ENABLE
+&gpt0 {
+	pinctrl-0 = <&gpt0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+	renesas,poegs = <&poeg0gd 4>;
+};
+
+&poeg0gd {
+	status = "okay";
+	renesas,poeg-config = <1>;
+};
+#endif
+
 &i2c1 {
+	pinctrl-0 = <&i2c1_pins>;
+	pinctrl-names = "default";
 	clock-frequency = <100000>;
+	status = "okay";
 };

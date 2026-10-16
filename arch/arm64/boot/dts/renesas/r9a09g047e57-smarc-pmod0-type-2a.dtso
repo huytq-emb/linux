@@ -17,20 +17,65 @@
  * Only one controller may own PM4-PM7. Add the attached SPI peripheral
  * as a child of the selected controller.
  *
- * Select the supply using PMOD_PWR_SEL. Auxiliary pins 7-10 retain their
- * base-DT configuration. Modules using GPIO4/6/7 must release the matching
- * user keys; pins 9/10 also depend on SW_PMOD0_PWR_SLP routing.
+ * Select the supply using PMOD_PWR_SEL. The user keys on GPIO4/6/7 are
+ * enabled here by default. Set the corresponding PMOD_GPIO macro to 1
+ * to leave that pin available for the attached module. For GPIO6/7 and
+ * their keys, SYS.5 must be OFF (SW_LCD_EN = 0 in the base DTS).
+ * Pins 9/10 also require SW_PMOD0_PWR_SLP to select the GPIO routing.
  */
 
 /dts-v1/;
 /plugin/;
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
 
 #ifndef RSPI0_RSCI8_SEL
 #define RSPI0_RSCI8_SEL	0
 #endif
+
+/* 0: user key, 1: pin available for the PMOD peripheral. */
+#ifndef PMOD_GPIO4
+#define PMOD_GPIO4	0
+#endif
+#ifndef PMOD_GPIO6
+#define PMOD_GPIO6	0
+#endif
+#ifndef PMOD_GPIO7
+#define PMOD_GPIO7	0
+#endif
+
+&keys {
+#if !PMOD_GPIO4
+	key-1 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(3, 1) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_1>;
+		label = "USER_SW1";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+#if !PMOD_GPIO6
+	key-2 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(8, 4) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_2>;
+		label = "USER_SW2";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+#if !PMOD_GPIO7
+	key-3 {
+		interrupts-extended = <&pinctrl RZG3E_GPIO(8, 5) IRQ_TYPE_EDGE_FALLING>;
+		linux,code = <KEY_3>;
+		label = "USER_SW3";
+		wakeup-source;
+		debounce-interval = <20>;
+	};
+#endif
+};
 
 &pinctrl {
 #if RSPI0_RSCI8_SEL

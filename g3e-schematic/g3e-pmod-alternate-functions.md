@@ -127,3 +127,42 @@ configures GTIOC4A/B through `&gpt0`.
   separate pins), XSPI0 as memory (only IO4–7, with direction limitations),
   SDHI and Ethernet. Individual control-signal functions in the tables
   do not constitute those complete interfaces.
+
+## 4. Overlay ownership in this tree
+
+The supplied board configuration mentioned above is the baseline. After
+PMOD migration, the base DT leaves RSPI0, RSCI8, RSCI4, GPT0, POEG0GD and
+I2C1 disabled and has no USER_SW1/2/3 nodes. The sleep key remains in the
+base DT. Shared carrier key templates are removed from the G3E base with
+`/delete-node/`; Type 2A supplies complete key nodes when selected.
+
+| Overlay | Configuration it enables | Local mode macros |
+|---|---|---|
+| PMOD0 Type 2A | RSPI0 or BSP RSCI8 SPI; optional USER_SW1/2/3 on GPIO4/6/7 | `RSPI0_RSCI8_SEL`: 0 = RSPI0, 1 = RSCI8. `PMOD_GPIO4/6/7`: 0 = user key, 1 = pin available for the module. |
+| PMOD1 Type 3A | RSCI4 UART and its pinmux | No local mode macro. |
+| PMOD1 Type 6A | I2C1 on P32/P33 at 100 kHz; optional GPT PWM on P54/P55 and POEG0GD | `PMOD_PWM_ENABLE`: 1 = PWM (default), 0 = pins available for GPIO. |
+
+Edit the macro in the relevant `.dtso` and rebuild its overlay/composite
+DTB. Applying the overlay selects that configuration; it does not read
+the physical switches or the base DTS preprocessor macros. Rebuild from
+the base DT when changing modes; stacking alternative versions of the
+same overlay does not remove nodes added by a previous version.
+
+Type 2A defaults to RSPI0 and three enabled user keys. To use the shared
+pins for a module's GPIOs instead, set the corresponding `PMOD_GPIO`
+macros to 1. GPIO6/7 and their keys require the LCD routing to be disabled.
+All three macros can be set to 1 for a SPI-only overlay with no user keys.
+
+Type 6A is now also required for DA7212 audio: the codec node stays in the
+base DTS, but its shared I2C1 bus and pinmux are enabled only by this
+overlay. `PMOD_PWM_ENABLE=0` still enables I2C1 and leaves GPT0/POEG0GD
+disabled. When using PWM, SYS.5 must be OFF, SW_GPIO_CAN_PMOD must route
+to PMOD, and SW_GPIO_PMOD must enable IC17. Set `SW_LCD_EN`,
+`SW_GPIO8_CAN0_STB` and `SW_GPIO9_CAN1_STB` to 0 in the base DTS for this
+routing. The GPT/POEG configuration requires the corresponding BSP drivers.
+
+The PMOD-specific key-selection macros live in Type 2A; the SPI-controller
+selector is also local to Type 2A. Macros shared with CAN, LCD, SD and M.2
+remain in the base DTS. The `KEY_1_GPIO`, `KEY_2_GPIO` and `KEY_3_GPIO`
+definitions remain for preprocessing the shared carrier templates; they
+are pin mappings, not mode switches, and do not enable the removed keys.

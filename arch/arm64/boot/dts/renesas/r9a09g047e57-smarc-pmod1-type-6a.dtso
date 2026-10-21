@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * Device Tree Source for the RZ/G3E SMARC Carrier II EVK PMOD parts
+ *
+ * [Connection]
+ *
+ * SMARC Carrier II EVK
+ * +------------------------------------------+
+ * | PMOD1_6A (PMOD PIN HEADER)               |
+ * | PMOD1_GPIO10 (pin1)  (pin7) PMOD1_GPIO8  |
+ * | PMOD1_GPIO11 (pin2)  (pin8) PMOD1_GPIO9  |
+ * | I2C_GP_CK    (pin3)  (pin9) PMOD1_GPIO12 |
+ * | I2C_GP_DAT   (pin4)  (pin10)PMOD1_GPIO13 |
+ * | GND          (pin5)  (pin11)GND          |
+ * | PWR_PMOD1    (pin6)  (pin12)PWR_PMOD1    |
+ * +------------------------------------------+
+ *
+ * I2C1 is enabled by the base DT and shared with the DA7212 codec.
+ * For PWM: SYS.5 OFF, SW_GPIO_CAN_PMOD on the PMOD side,
+ * and SW_GPIO_PMOD high.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/pinctrl/renesas,r9a09g047-pinctrl.h>
+
+#include "rzg3e-smarc-switches.h"
+
+&pinctrl {
+#if (!SW_LCD_EN) && (!SW_GPIO8_CAN0_STB) && (!SW_GPIO9_CAN1_STB)
+	gpt0_pins: gpt0 {
+		pinmux = <RZG3E_PORT_PINMUX(5, 4, 10)>, /* GTIOC4A */
+			 <RZG3E_PORT_PINMUX(5, 5, 10)>; /* GTIOC4B */
+	};
+#endif
+};
+
+#if (!SW_LCD_EN) && (!SW_GPIO8_CAN0_STB) && (!SW_GPIO9_CAN1_STB)
+&gpt0 {
+	pinctrl-0 = <&gpt0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+	renesas,poegs = <&poeg0gd 4>;
+};
+
+&poeg0gd {
+	status = "okay";
+	renesas,poeg-config = <1>;
+};
+#endif

@@ -5,9 +5,11 @@
  * Copyright (C) 2024 Renesas Electronics Corp.
  */
 
+#include "rzg3e-smarc-switches.h"
+
 /*
  * Please set the below switch position on the SoM and the corresponding macro
- * on the board DTS:
+ * in rzg3e-smarc-switches.h:
  *
  * Switch position SYS.1, Macro SW_SD0_DEV_SEL:
  *      0 - SD0 is connected to eMMC (default)
@@ -228,9 +230,11 @@
 	mali-supply = <&reg_vdd0p8v_others>;
 };
 
+/* Shared by the on-board DA7212 codec and the PMOD1 Type 6A connector. */
 &i2c1 {
 	pinctrl-0 = <&i2c1_pins>;
 	pinctrl-names = "default";
+	clock-frequency = <100000>;
 	status = "okay";
 };
 

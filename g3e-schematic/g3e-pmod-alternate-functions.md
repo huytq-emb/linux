@@ -127,3 +127,90 @@ configures GTIOC4A/B through `&gpt0`.
   separate pins), XSPI0 as memory (only IO4–7, with direction limitations),
   SDHI and Ethernet. Individual control-signal functions in the tables
   do not constitute those complete interfaces.
+
+## 4. Overlay configuration in this tree
+
+The shared `arch/arm64/boot/dts/renesas/rzg3e-smarc-switches.h` follows
+the naming, include guard and comment style of upstream
+`rzg3s-smarc-switches.h`. It contains only board `SW_*` selections and
+`SW_OFF`/`SW_ON` constants.
+
+| Configuration file | Selectors |
+|---|---|
+| `rzg3e-smarc-switches.h` | `SW_LCD_EN`, `SW_PDM_EN`, `SW_SD0_DEV_SEL`, `SW_HDMI_EN`, `SW_GPIO8_CAN0_STB`, `SW_GPIO9_CAN1_STB`, `SW_SER0_PMOD`, `SW_SER2_EN`, `SW_SDIO_M2E` |
+| `r9a09g047e57-smarc.dts` | `RZG3E_SMARC_MIPI_DSI_ENABLE`, `RZG3E_SMARC_LVDS_ENABLE`, `PMOD_GPIO4`, `PMOD_GPIO6`, `PMOD_GPIO7` |
+| Type 2A `.dtso` | `RSPI0_RSCI8_SEL` |
+
+Edit selectors directly in the file listed above rather than overriding
+them with compiler `-D` options. Included SoM/carrier files use the
+switch definitions from the header. The display-selection check stays
+in the base DTS; the UART routing check belongs to Type 3A.
+The base DTS also retains the `KEY_*_GPIO` pin-mapping macros.
+
+Rebuild the base DTB and all overlays after changing shared settings.
+Changing an overlay-only selector requires rebuilding that overlay and
+its composite DTB. PMOD-specific peripherals are enabled by their
+respective overlays; the shared I2C1 bus remains enabled in the base DT.
+
+The base DT leaves RSPI0, RSCI8, RSCI4, GPT0 and POEG0GD disabled.
+I2C1 pinmux, bus speed and enablement remain in `rzg3e-smarc-som.dtsi`
+so that the on-board DA7212 codec is available without a PMOD overlay.
+USER_SW1/2/3 are board buttons inherited from `renesas-smarc2.dtsi` and
+are enabled by default. The G3E base removes USER_SW1 when `PMOD_GPIO4=1`,
+USER_SW2 when `SW_LCD_EN=1` or `PMOD_GPIO6=1`, and USER_SW3 when
+`SW_LCD_EN=1` or `PMOD_GPIO7=1`. Set the PMOD GPIO selections in the
+base DTS and rebuild the base DTB to release those pins, even when no
+overlay is loaded. The sleep key remains in the base DT. The
+`KEY_1_GPIO`, `KEY_2_GPIO` and `KEY_3_GPIO` mappings in the G3E base
+supply the shared carrier definitions.
+
+None of the three PMOD overlays defines, disables or recreates buttons.
+A plain SPI overlay does not require removing any buttons.
+The shared carrier DTSI and the G3L board DTS are unchanged.
+
+| Overlay | Configuration it enables | Selectors and routing checks |
+|---|---|---|
+| PMOD0 Type 2A | RSPI0 or BSP RSCI8 SPI | `RSPI0_RSCI8_SEL`: 0 = RSPI0, 1 = RSCI8. `PMOD_GPIO4/6/7` in the base DTS: 0 = keep the board button, 1 = remove it from the base DT. With LCD enabled, USER_SW2/3 remain absent from the base. |
+| PMOD1 Type 3A | RSCI4 UART | Compilation fails unless `SW_LCD_EN=0` and `SW_SER0_PMOD=1`. |
+| PMOD1 Type 6A | Optional GPT PWM on P54/P55 and POEG0GD; uses I2C1 on P32/P33 already enabled at 100 kHz by the base DT | PWM is enabled when `SW_LCD_EN=0` and both `SW_GPIO8_CAN0_STB`/`SW_GPIO9_CAN1_STB` set to 0. I2C1 configuration is not duplicated in the overlay. |
+
+With `SW_LCD_EN=1`, Type 2A retains SPI and, unless `PMOD_GPIO4=1`,
+USER_SW1. Type 6A retains I2C1 but does not configure GPT/POEG or their
+pinmux. Type 3A cannot be used with LCD. Build the compatible targets
+explicitly instead of requesting all three composites in this mode, once
+the LCD board support files are available:
+
+```sh
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+  renesas/r9a09g047e57-smarc.dtb \
+  renesas/r9a09g047e57-smarc-pmod0-type-2a.dtb \
+  renesas/r9a09g047e57-smarc-pmod1-type-6a.dtb
+```
+
+The supplied source snapshot references `renesas-smarc2-rgb.dtsi` but
+does not contain that file. A full base-DTB build with `SW_LCD_EN=1` is
+therefore currently blocked independently of the PMOD changes. The
+overlays themselves can be compiled to check their LCD conditions.
+
+DA7212 audio does not require Type 6A: the codec node, shared I2C1 bus
+and pinmux are all available in the base DT. All three PMOD overlays
+leave that bus configuration unchanged. Add PMOD I2C
+devices under `&i2c1` in Type 6A, using addresses free on the shared bus.
+If CAN uses either
+GPIO8/9 pin, the entire PWM pair is omitted. The GPT/POEG configuration
+and RSCI8 SPI option require the corresponding BSP drivers; the
+mainline RSCI UART driver does not implement `renesas,rsci_spi`.
+
+The header does not read or change physical switches. For PMOD UART,
+SYS.5 must be OFF and SW_OPT_MUX.4 OFF (SER0 routed to PMOD). GPIO6/7
+require GPIO routing on SW_PMOD0_PWR_SLP and LCD off. PWM requires LCD
+off, SW_GPIO_CAN_PMOD on the PMOD side and SW_GPIO_PMOD enabling IC17.
+Select the PMOD supply with PMOD_PWR_SEL.
+
+These conditions protect artifacts built with the same header settings.
+An overlay built with LCD off can still conflict with a base DTB built
+with LCD on: the overlay loader does not check preprocessor settings.
+Deploy matching artifacts together. Rebuild from the base DT when
+changing modes; stacking another version of an overlay does not remove
+nodes added by an earlier version. Releasing a key or PWM pin does not
+by itself configure an alternative peripheral or change hardware routing.

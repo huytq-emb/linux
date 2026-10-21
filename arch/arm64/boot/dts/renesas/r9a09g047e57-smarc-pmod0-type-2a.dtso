@@ -29,6 +29,13 @@
 /* 0 = RSPI0, 1 = BSP RSCI8 SPI. */
 #define RSPI0_RSCI8_SEL	0
 
+/* Release GPIO6/7 with PMOD_GPIO6/7=1 in the base DTS before enabling CAN1. */
+#define PMOD0_CAN1	SW_OFF
+
+#if PMOD0_CAN1 && (SW_LCD_EN || SW_GPIO9_CAN1_STB)
+#error "PMOD0 CAN1 requires SW_LCD_EN=0 and SW_GPIO9_CAN1_STB=0"
+#endif
+
 &pinctrl {
 #if RSPI0_RSCI8_SEL
 	rsci8_master_pins: rsci8-master {
@@ -71,5 +78,20 @@
 
 &rsci8 {
 	status = "disabled";
+};
+#endif
+
+#if PMOD0_CAN1
+&canfd_pins {
+	can1 {
+		pinmux = <RZG3E_PORT_PINMUX(8, 4, 3)>, /* CRX1 */
+			 <RZG3E_PORT_PINMUX(8, 5, 3)>; /* CTX1 */
+	};
+};
+
+&canfd {
+	channel1 {
+		status = "okay";
+	};
 };
 #endif

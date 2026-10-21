@@ -132,20 +132,24 @@ configures GTIOC4A/B through `&gpt0`.
 
 The shared `arch/arm64/boot/dts/renesas/rzg3e-smarc-switches.h` follows
 the naming, include guard and comment style of upstream
-`rzg3s-smarc-switches.h`. It contains only board `SW_*` selections and
-`SW_OFF`/`SW_ON` constants.
+`rzg3s-smarc-switches.h`. It contains board `SW_*` selections and
+`SW_OFF`/`SW_ON` constants. Display and PMOD GPIO selections stay in the
+base DTS; native CAN selections stay in their respective overlays.
 
 | Configuration file | Selectors |
 |---|---|
 | `rzg3e-smarc-switches.h` | `SW_LCD_EN`, `SW_PDM_EN`, `SW_SD0_DEV_SEL`, `SW_HDMI_EN`, `SW_GPIO8_CAN0_STB`, `SW_GPIO9_CAN1_STB`, `SW_SER0_PMOD`, `SW_SER2_EN`, `SW_SDIO_M2E` |
 | `r9a09g047e57-smarc.dts` | `RZG3E_SMARC_MIPI_DSI_ENABLE`, `RZG3E_SMARC_LVDS_ENABLE`, `PMOD_GPIO4`, `PMOD_GPIO6`, `PMOD_GPIO7` |
-| Type 2A `.dtso` | `RSPI0_RSCI8_SEL` |
+| Type 2A `.dtso` | `RSPI0_RSCI8_SEL`, `PMOD0_CAN1` |
+| Type 3A `.dtso` | `PMOD1_CAN0` |
 
 Edit selectors directly in the file listed above rather than overriding
 them with compiler `-D` options. Included SoM/carrier files use the
 switch definitions from the header. The display-selection check stays
-in the base DTS; the UART routing check belongs to Type 3A.
+in the base DTS; the UART/CAN0 routing check belongs to Type 3A.
 The base DTS also retains the `KEY_*_GPIO` pin-mapping macros.
+Type 2A overwrites the existing CAN1 pinmux when `PMOD0_CAN1=1`.
+The base DTS does not depend on either overlay-local CAN selector.
 
 Rebuild the base DTB and all overlays after changing shared settings.
 Changing an overlay-only selector requires rebuilding that overlay and
@@ -165,13 +169,16 @@ overlay is loaded. The sleep key remains in the base DT. The
 supply the shared carrier definitions.
 
 None of the three PMOD overlays defines, disables or recreates buttons.
-A plain SPI overlay does not require removing any buttons.
+Native CAN1 requires `PMOD_GPIO6=1` and `PMOD_GPIO7=1` to release P84/P85
+in the base DT. These base-only selectors are not visible while compiling
+the overlay, so this requirement must be set explicitly before building
+and deploying the matching base DTB. A plain SPI overlay does not require removing any buttons.
 The shared carrier DTSI and the G3L board DTS are unchanged.
 
 | Overlay | Configuration it enables | Selectors and routing checks |
 |---|---|---|
-| PMOD0 Type 2A | RSPI0 or BSP RSCI8 SPI | `RSPI0_RSCI8_SEL`: 0 = RSPI0, 1 = RSCI8. `PMOD_GPIO4/6/7` in the base DTS: 0 = keep the board button, 1 = remove it from the base DT. With LCD enabled, USER_SW2/3 remain absent from the base. |
-| PMOD1 Type 3A | RSCI4 UART | Compilation fails unless `SW_LCD_EN=0` and `SW_SER0_PMOD=1`. |
+| PMOD0 Type 2A | RSPI0 or BSP RSCI8 SPI; optional native CAN1 on GPIO6/7 | `RSPI0_RSCI8_SEL`: 0 = RSPI0, 1 = RSCI8. `PMOD_GPIO4/6/7` in the base DTS: 0 = keep the board button, 1 = remove it from the base DT. `PMOD0_CAN1=1` requires `PMOD_GPIO6=1` and `PMOD_GPIO7=1`. With LCD enabled, USER_SW2/3 remain absent from the base. |
+| PMOD1 Type 3A | RSCI4 UART or native CAN0, selected by `PMOD1_CAN0` | Compilation fails unless `SW_LCD_EN=0` and `SW_SER0_PMOD=1`. |
 | PMOD1 Type 6A | Optional GPT PWM on P54/P55 and POEG0GD; uses I2C1 on P32/P33 already enabled at 100 kHz by the base DT | PWM is enabled when `SW_LCD_EN=0` and both `SW_GPIO8_CAN0_STB`/`SW_GPIO9_CAN1_STB` set to 0. I2C1 configuration is not duplicated in the overlay. |
 
 With `SW_LCD_EN=1`, Type 2A retains SPI and, unless `PMOD_GPIO4=1`,
@@ -214,3 +221,100 @@ Deploy matching artifacts together. Rebuild from the base DT when
 changing modes; stacking another version of an overlay does not remove
 nodes added by an earlier version. Releasing a key or PWM pin does not
 by itself configure an alternative peripheral or change hardware routing.
+
+
+## 5. Native CAN on PMOD
+
+Two native CAN routes are implemented. They require an external CAN
+transceiver with logic I/O compatible with the selected PMOD supply;
+PMOD carries RXD/TXD, not the differential CANH/CANL bus. A SPI-based
+CAN controller module is a separate device and uses the SPI configuration
+instead of these native CAN selections.
+
+| Overlay setting | Overlay | SoC channel | PMOD RX / TX | Pinmux | Effect on existing functions |
+|---|---|---|---|---|---|
+| `PMOD0_CAN1 = SW_ON` | Type 2A | CAN1 | pins 9 / 10, P84 / P85 | function 3: CRX1 / CTX1 | Requires `PMOD_GPIO6/7=1` to remove USER_SW2/3 from the base; overwrites the board's PL2/PL3 CAN1 pinmux; keeps SPI and optional USER_SW1. |
+| `PMOD1_CAN0 = SW_ON` | Type 3A | CAN0 | pins 1 / 4, P80 / P81 | function 3: CRX0 / CTX0 | Keeps RSCI4 disabled and omits its pinmux; pins 2/3 are unused. |
+
+The pinmux selectors were cross-checked against the official
+[Renesas RZ/G FSP 3.1.0 release](https://github.com/renesas/rzg-fsp/releases/tag/v3.1.0):
+`RZG_FSP_Packs_v3.1.0.zip`, MCU pack `Renesas.RZG_mcu_rzg3e.3.1.0.pack`,
+file `.mcu/.pinmapping/R9A09G047E57GBG.xml`. Its `p80.canfd0.crx0`,
+`p81.canfd0.ctx0`, `p84.canfd1.crx1` and `p85.canfd1.ctx1` entries each
+select `IOPORT_PERIPHERAL_MODE3`. The supplied schematics and the module
+board GPIO/UART routing tables establish the PMOD connections and
+buffer directions. The kernel's `renesas,r9a09g047-canfd` driver supports
+these channels; no driver or binding change is needed for these routes.
+
+To select both routes, edit `rzg3e-smarc-switches.h`:
+
+```c
+#define SW_LCD_EN              SW_OFF
+#define SW_GPIO9_CAN1_STB      SW_OFF
+#define SW_SER0_PMOD           SW_ON
+```
+
+In `r9a09g047e57-smarc.dts`, release the CAN1 pins:
+
+```c
+#define PMOD_GPIO6             1
+#define PMOD_GPIO7             1
+```
+
+In `r9a09g047e57-smarc-pmod0-type-2a.dtso`, set:
+
+```c
+#define PMOD0_CAN1             SW_ON
+```
+
+In `r9a09g047e57-smarc-pmod1-type-3a.dtso`, also set:
+
+```c
+#define PMOD1_CAN0             SW_ON
+```
+
+Rebuild the base DTB and the required overlays with that same header.
+Each composite DTB contains only its named overlay. To enable both CAN
+routes, apply both Type 2A and Type 3A DTBOs to the matching base before
+booting Linux. Type 2A targets the existing `can1` child in `canfd_pins`
+and replaces its entire `pinmux` property with P84/P85. If the child is
+absent because `SW_PDM_EN=SW_ON`, the overlay creates it instead.
+Type 3A adds a separate `can0-pmod` child. Both preserve onboard CAN4
+and each other's pinmux regardless of application order.
+
+The base retains CAN1 on PL2/PL3 when `SW_PDM_EN=SW_OFF`; applying
+Type 2A with `PMOD0_CAN1=SW_ON` moves that channel to P84/P85. With
+`SW_PDM_EN=SW_ON`, the base leaves CAN1 disabled and the overlay enables
+it on the PMOD pins, leaving the PL2/PL3 PDM configuration intact.
+Channel0 stays disabled in the base and is enabled only by Type 3A in
+CAN mode. Buttons removed by the base DT's PMOD GPIO or LCD selections
+remain absent regardless of which overlays are loaded.
+
+Both the base and overlay must use `SW_GPIO9_CAN1_STB=SW_OFF` for PMOD
+CAN1. This omits the onboard CAN1 transceiver's `phys` reference from
+the base. Overwriting the CAN1 pinmux does not remove an existing `phys`
+property from a base built with different switch settings.
+
+Both selections reject LCD routing at preprocessing time. PMOD0 CAN1
+also rejects `SW_GPIO9_CAN1_STB=SW_ON`: its former onboard CAN1
+transceiver is no longer the PHY for that channel. PMOD1 CAN0 requires
+SER0 routed to PMOD so that IC22 is enabled. Set SYS.5 OFF; for PMOD0
+pins 9/10 select GPIO on SW_PMOD0_PWR_SLP, and for PMOD1 set
+SW_OPT_MUX.4 OFF. Connect the transceiver RXD output to PMOD RX and its
+TXD input to PMOD TX, with common ground and a suitable PMOD supply.
+The GPIO6/7 buttons remain physically connected; keep them released
+when using CAN1. The bus-side wiring and termination belong to the
+external transceiver setup.
+
+Both CAN selectors default to `SW_OFF`, preserving the previous default
+DTBs. Native CAN1 may coexist with Type 6A I2C/PWM on the separate PMOD1
+header; the existing LCD/CAN-standby guards still control that PWM pair.
+Do not switch these modes by stacking replacement overlays after the
+CAN or UART drivers have probed. Use matching artifacts at boot.
+
+This change does not implement the `CTXDP`/`CRXDP` candidates in section
+2, including the CAN3 pair on PM4/PM5 and the alternative CAN0 pair on
+P76/P77. Their complete port-selection requirements remain to be
+verified. Electrical operation and achievable CAN/CAN-FD bitrate through
+the carrier translators have not been tested on hardware; build and DT
+validation do not establish timing margins.
